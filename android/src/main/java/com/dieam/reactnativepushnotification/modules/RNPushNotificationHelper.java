@@ -256,6 +256,7 @@ public class RNPushNotificationHelper {
 
             int importance = NotificationManager.IMPORTANCE_HIGH;
             final String importanceString = bundle.getString("importance");
+            String channel_id = bundle.getString("channelId");
 
             if (importanceString != null) {
                 switch (importanceString.toLowerCase()) {
@@ -306,7 +307,6 @@ public class RNPushNotificationHelper {
                 }
             }
             
-            String channel_id = bundle.getString("channelId");
 
             if(channel_id == null) {
                 channel_id = this.config.getNotificationDefaultChannelId();
