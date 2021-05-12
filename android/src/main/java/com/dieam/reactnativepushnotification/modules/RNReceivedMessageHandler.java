@@ -9,22 +9,23 @@ import android.app.Application;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.content.Context;
 import android.util.Log;
+import android.net.Uri;
 import androidx.annotation.NonNull;
+import androidx.core.app.NotificationCompat;
 
 import com.dieam.reactnativepushnotification.helpers.ApplicationBadgeHelper;
 import com.facebook.react.ReactApplication;
 import com.facebook.react.ReactInstanceManager;
-import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContext;
-import com.facebook.react.bridge.WritableMap;
 
 import org.json.JSONObject;
 
 import java.util.Map;
 import java.util.List;
-import java.util.Random;
+import java.security.SecureRandom;
 
 import static android.content.Context.ACTIVITY_SERVICE;
 import static com.dieam.reactnativepushnotification.modules.RNPushNotification.LOG_TAG;
@@ -44,44 +45,79 @@ public class RNReceivedMessageHandler {
         // data has it
         if (remoteNotification != null) {
             // ^ It's null when message is from GCM
-            bundle.putString("title", remoteNotification.getTitle());
-            bundle.putString("message", remoteNotification.getBody());
+            RNPushNotificationConfig config = new RNPushNotificationConfig(mFirebaseMessagingService.getApplication());  
+
+            String title = getLocalizedString(remoteNotification.getTitle(), remoteNotification.getTitleLocalizationKey(), remoteNotification.getTitleLocalizationArgs());
+            String body = getLocalizedString(remoteNotification.getBody(), remoteNotification.getBodyLocalizationKey(), remoteNotification.getBodyLocalizationArgs());
+
+            bundle.putString("title", title);
+            bundle.putString("message", body);
             bundle.putString("sound", remoteNotification.getSound());
             bundle.putString("color", remoteNotification.getColor());
-        }
-
-        Map<String, String> notificationData = message.getData();
-
-        // Copy `twi_body` to `message` to support Twilio
-        if (notificationData.containsKey("twi_body")) {
-            bundle.putString("message", notificationData.get("twi_body"));
-        }
-        JSONObject data = getPushData(notificationData.get("data"));
-
-        if (data != null) {
-            if (!bundle.containsKey("message")) {
-                bundle.putString("message", data.optString("alert", null));
+            bundle.putString("tag", remoteNotification.getTag());
+            
+            if(remoteNotification.getChannelId() != null) {
+              bundle.putString("channelId", remoteNotification.getChannelId());
             }
-            if (!bundle.containsKey("title")) {
-                bundle.putString("title", data.optString("title", null));
-            }
-            if (!bundle.containsKey("sound")) {
-                bundle.putString("soundName", data.optString("sound", null));
-            }
-            if (!bundle.containsKey("color")) {
-                bundle.putString("color", data.optString("color", null));
+            else {
+              bundle.putString("channelId", config.getNotificationDefaultChannelId());
             }
 
-            final int badge = data.optInt("badge", -1);
-            if (badge >= 0) {
-                ApplicationBadgeHelper.INSTANCE.setApplicationIconBadgeNumber(mFirebaseMessagingService, badge);
+            Integer visibilty = remoteNotification.getVisibility();
+            String visibilityString = "private";
+
+            if (visibilty != null) {
+                switch (visibilty) {
+                    case NotificationCompat.VISIBILITY_PUBLIC:
+                        visibilityString = "public";
+                        break;
+                    case NotificationCompat.VISIBILITY_SECRET:
+                        visibilityString = "secret";
+                        break;
+                }
+            }
+          
+            bundle.putString("visibility", visibilityString);
+
+            Integer priority = remoteNotification.getNotificationPriority();
+            String priorityString = "high";
+            
+            if (priority != null) {
+              switch (priority) {
+                  case NotificationCompat.PRIORITY_MAX:
+                      priorityString = "max";
+                      break;
+                  case NotificationCompat.PRIORITY_LOW:
+                      priorityString = "low";
+                      break;
+                  case NotificationCompat.PRIORITY_MIN:
+                      priorityString = "min";
+                      break;
+                  case NotificationCompat.PRIORITY_DEFAULT:
+                      priorityString = "default";
+                      break;
+              }
+            }
+
+            bundle.putString("priority", priorityString);
+
+            Uri uri = remoteNotification.getImageUrl();
+
+            if(uri != null) {
+                String imageUrl = uri.toString();
+              
+                bundle.putString("bigPictureUrl", imageUrl);
+                bundle.putString("largeIconUrl", imageUrl);
             }
         }
 
         Bundle dataBundle = new Bundle();
+        Map<String, String> notificationData = message.getData();
+        
         for(Map.Entry<String, String> entry : notificationData.entrySet()) {
             dataBundle.putString(entry.getKey(), entry.getValue());
         }
+
         bundle.putParcelable("data", dataBundle);
 
         Log.v(LOG_TAG, "onMessageReceived: " + bundle);
@@ -93,7 +129,7 @@ public class RNReceivedMessageHandler {
         handler.post(new Runnable() {
             public void run() {
                 // Construct and load our normal React JS code bundle
-                ReactInstanceManager mReactInstanceManager = ((ReactApplication) mFirebaseMessagingService.getApplication()).getReactNativeHost().getReactInstanceManager();
+                final ReactInstanceManager mReactInstanceManager = ((ReactApplication) mFirebaseMessagingService.getApplication()).getReactNativeHost().getReactInstanceManager();
                 ReactContext context = mReactInstanceManager.getCurrentReactContext();
                 // If it's constructed, send a notificationre
                 if (context != null) {
@@ -103,6 +139,7 @@ public class RNReceivedMessageHandler {
                     mReactInstanceManager.addReactInstanceEventListener(new ReactInstanceManager.ReactInstanceEventListener() {
                         public void onReactContextInitialized(ReactContext context) {
                             handleRemotePushNotification((ReactApplicationContext) context, bundle);
+                            mReactInstanceManager.removeReactInstanceEventListener(this);
                         }
                     });
                     if (!mReactInstanceManager.hasStartedCreatingInitialContext()) {
@@ -114,25 +151,20 @@ public class RNReceivedMessageHandler {
         });
     }
 
-    private JSONObject getPushData(String dataString) {
-        try {
-            return new JSONObject(dataString);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     private void handleRemotePushNotification(ReactApplicationContext context, Bundle bundle) {
 
         // If notification ID is not provided by the user for push notification, generate one at random
         if (bundle.getString("id") == null) {
-            Random randomNumberGenerator = new Random(System.currentTimeMillis());
+            SecureRandom randomNumberGenerator = new SecureRandom();
             bundle.putString("id", String.valueOf(randomNumberGenerator.nextInt()));
         }
 
-        RNPushNotificationConfig config = new RNPushNotificationConfig(mFirebaseMessagingService.getApplication());
+        Application applicationContext = (Application) context.getApplicationContext();
 
-        Boolean isForeground = isApplicationInForeground();
+        RNPushNotificationConfig config = new RNPushNotificationConfig(mFirebaseMessagingService.getApplication());  
+        RNPushNotificationHelper pushNotificationHelper = new RNPushNotificationHelper(applicationContext);
+
+        boolean isForeground = pushNotificationHelper.isApplicationInForeground();
 
         RNPushNotificationJsDelivery jsDelivery = new RNPushNotificationJsDelivery(context);
         bundle.putBoolean("foreground", isForeground);
@@ -144,28 +176,34 @@ public class RNReceivedMessageHandler {
             jsDelivery.notifyRemoteFetch(bundle);
         }
 
-        Log.v(LOG_TAG, "sendNotification: " + bundle);
-
         if (config.getNotificationForeground() || !isForeground) {
-            Application applicationContext = (Application) context.getApplicationContext();
-            RNPushNotificationHelper pushNotificationHelper = new RNPushNotificationHelper(applicationContext);
+            Log.v(LOG_TAG, "sendNotification: " + bundle);
+
             pushNotificationHelper.sendToNotificationCentre(bundle);
         }
     }
 
-    private boolean isApplicationInForeground() {
-        ActivityManager activityManager = (ActivityManager) mFirebaseMessagingService.getSystemService(ACTIVITY_SERVICE);
-        List<RunningAppProcessInfo> processInfos = activityManager.getRunningAppProcesses();
-        if (processInfos != null) {
-            for (RunningAppProcessInfo processInfo : processInfos) {
-                if (processInfo.processName.equals(mFirebaseMessagingService.getPackageName())
-                    && processInfo.importance == RunningAppProcessInfo.IMPORTANCE_FOREGROUND
-                    && processInfo.pkgList.length > 0) {
-                    return true;
+    private String getLocalizedString(String text, String locKey, String[] locArgs) {
+        if(text != null) {
+          return text;
+        }
+
+        Context context = mFirebaseMessagingService.getApplicationContext();
+        String packageName = context.getPackageName();
+
+        String result = null;
+
+        if (locKey != null) {
+            int id = context.getResources().getIdentifier(locKey, "string", packageName);
+            if (id != 0) {
+                if (locArgs != null) {
+                    result = context.getResources().getString(id, (Object[]) locArgs);
+                } else {
+                    result = context.getResources().getString(id);
                 }
             }
         }
-        return false;
-    }
 
+        return result;
+    }
 }
