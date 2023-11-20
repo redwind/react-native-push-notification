@@ -170,6 +170,20 @@ NotificationsComponent.prototype.deleteChannel = function(channel_id) {
 	RNPushNotification.deleteChannel(channel_id);
 }
 
+NotificationsComponent.prototype.requestAlarmPermissions = function() {
+	RNPushNotification.requestAlarmPermissions()
+}
+
+NotificationsComponent.prototype.canScheduleExactAlarms = function() {
+    return RNPushNotification.canScheduleExactAlarms()
+      .then(result => {
+        return result;
+      })
+      .catch(error => {
+        return false;
+      });
+}
+
 module.exports = {
 	component: new NotificationsComponent()
 };

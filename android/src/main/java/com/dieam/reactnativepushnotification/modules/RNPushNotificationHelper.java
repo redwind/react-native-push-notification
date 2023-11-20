@@ -1,5 +1,7 @@
 package com.dieam.reactnativepushnotification.modules;
 
+import android.app.Activity;
+import android.net.Uri;
 import android.app.ActivityManager;
 import android.app.ActivityManager.RunningAppProcessInfo;
 import android.app.AlarmManager;
@@ -174,10 +176,15 @@ public class RNPushNotificationHelper {
         Log.d(LOG_TAG, String.format("Setting a notification with id %s at time %s",
                 bundle.getString("id"), Long.toString(fireDate)));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            if (allowWhileIdle && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                getAlarmManager().setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireDate, pendingIntent);
-            } else {
-                getAlarmManager().setExact(AlarmManager.RTC_WAKEUP, fireDate, pendingIntent);
+            try {
+                 if (allowWhileIdle && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    getAlarmManager().setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireDate, pendingIntent);
+                } else {
+                    getAlarmManager().setExact(AlarmManager.RTC_WAKEUP, fireDate, pendingIntent);
+                }
+
+            } catch (Exception e) {
+                Log.e(LOG_TAG, "failed to set exact alarm", e);
             }
         } else {
             getAlarmManager().set(AlarmManager.RTC_WAKEUP, fireDate, pendingIntent);
@@ -780,6 +787,22 @@ public class RNPushNotificationHelper {
         for (String id : scheduledNotificationsPersistence.getAll().keySet()) {
             cancelScheduledNotification(id);
         }
+    }
+
+    public void requestAlarmPermissions(Activity activity) {
+        Log.i(LOG_TAG, "Requesting exact alarm permission.");
+        // Get the package name dynamically
+        String packageName = activity.getPackageName();
+        // Create an intent with the action for requesting exact alarm permission
+        Intent intent = new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,  Uri.parse("package:" + packageName));
+        // Start the activity using the intent
+        activity.startActivity(intent);
+    }
+
+    public boolean canScheduleExactAlarms() {
+        Log.i(LOG_TAG, "Checking for exact alarm permission.");
+        boolean result = getAlarmManager().canScheduleExactAlarms();
+        return result;
     }
 
     public void cancelScheduledNotification(String notificationIDString) {

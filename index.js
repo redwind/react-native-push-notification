@@ -633,6 +633,14 @@ Notifications.setNotificationCategories = function() {
   return this.callNative('setNotificationCategories', arguments);
 }
 
+Notifications.requestAlarmPermissions = function() {
+	return this.callNative('requestAlarmPermissions', arguments);
+};
+
+Notifications.canScheduleExactAlarms = function() {
+	return this.callNative('canScheduleExactAlarms', arguments);
+};
+
 // https://developer.android.com/reference/android/app/NotificationManager#IMPORTANCE_DEFAULT
 Notifications.Importance = Object.freeze({
   DEFAULT: 3,

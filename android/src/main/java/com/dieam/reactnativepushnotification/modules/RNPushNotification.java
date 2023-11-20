@@ -339,4 +339,24 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
     public void deleteChannel(String channel_id) {
       mRNPushNotificationHelper.deleteChannel(channel_id);
     }
+
+    @ReactMethod
+    /**
+     * Requests exact alarm permission for android >= 14.
+     */
+    public void requestAlarmPermissions() {
+        Activity activity = getCurrentActivity();
+        if (activity != null) {
+            mRNPushNotificationHelper.requestAlarmPermissions(activity);
+        }
+    }
+
+    @ReactMethod
+    /**
+     * Check if the user is able to set exact alarms.
+     */
+    public void canScheduleExactAlarms(Promise promise) {
+        boolean result = mRNPushNotificationHelper.canScheduleExactAlarms();
+        promise.resolve(result);
+    }
 }
